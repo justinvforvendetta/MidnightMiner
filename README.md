@@ -2,6 +2,12 @@
 
 A Python-based mining bot for the Midnight Network's scavenger hunt, allowing users to automatically mine for NIGHT tokens with multiple wallets.
 
+## Disclaimer
+
+This is an unofficial tool, and has not been properly tested. Use it at your own risk. 
+
+I will be updating and improving this software regularly. Please keep up to date by re-downloading from this repository and coppying over you `wallets.json` and `challenges.json` files, or simply by running `git pull`. 
+
 ## How It Works
 
 The miner operates by performing the following steps:
@@ -59,7 +65,7 @@ To access your earned NIGHT tokens, you will need to import your wallets' signin
 
 ## Dashboard
 
-The dashboard displays important information about the status of each worker. The `Challenge` column shows which challenge ID the worker is trying to solve. `Completed` shows how many solutions have been sucessfully submitted (and verified) by the server. `NIGHT` is an estimation of the rewards each wallet will receive. This is updated every 24 hours.
+The dashboard displays important information about the status of each worker. The `Challenge` column shows which challenge ID the worker is trying to solve. It also shows statuses if not actively mining, for example "Waiting" if all known challenges have been completed. `Completed` shows how many solutions have been sucessfully submitted (and verified) by the server. `NIGHT` is an estimation of the rewards each wallet will receive. This is updated every 24 hours.
 
 ```
 ==============================================================================================================
@@ -83,7 +89,3 @@ TOTAL                                                                           
 Press Ctrl+C to stop all miners
 ```
 
-
-## Disclaimer
-
-This is an unofficial tool. Use it at your own risk. The security of your wallet is your responsibility. Ensure you keep your wallet files (`*.json`) safe and private, and never share your `.skey` files. They contain the private keys required to access any earned tokens.
