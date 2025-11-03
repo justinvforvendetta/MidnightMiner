@@ -482,7 +482,7 @@ class MinerWorker:
     def submit_solution(self, challenge, nonce):
         """Submit solution to API"""
         addr_encoded = quote(self.address, safe='')
-        challenge_encoded = quote(challenge['challenge_id'], safe='')
+        challenge_encoded = quote(challenge['challenge_id'], safe='*')
         nonce_encoded = quote(nonce, safe='')
         url = f"{self.api_base.rstrip('/')}/solution/{addr_encoded}/{challenge_encoded}/{nonce_encoded}"
 
