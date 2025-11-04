@@ -30,23 +30,14 @@ Before running the miner, ensure you have the following:
     ```bash
     pip install wasmtime requests pycardano cbor2 portalocker
     ```
-3.  **Optional - Better Cross-Platform File Locking** (recommended for Windows users):
-    ```bash
-    pip install portalocker
-    ```
-    The miner works without this package using built-in platform-specific file locking, but installing `portalocker` provides more robust cross-platform file locking.
+3. **Git**: Use Git to download and update your Miner easily.
 
-## Developer Donations
+## Download
 
-This miner includes an **optional 5% donation system** to support ongoing development and maintenance. By default, approximately 1 in 20 (5%) of solved challenges will be mined for the developer's address.
-
-
-To disable donations, add the `--no-donation` flag:
-```bash
-python miner.py --no-donation
+Run this command to download MidnightMiner
 ```
-
-Thank you for considering supporting this project!
+git clone https://github.com/djeanql/MidnightMiner && cd MidnightMiner
+```
 
 ## Usage
 
@@ -63,8 +54,29 @@ You can run the miner from your terminal.
     ```bash
     python miner.py --workers <number of workers>
     ```
-    ⚠️ Each worker typically uses one CPU core, and 1GB of RAM. Do not run more workers than your system is capable of.
+    Each worker typically uses one CPU core, and 1GB of RAM. Do not run more workers than your system is capable of.
 
+
+## ⚠️ Update Regularly
+
+This software will be updated very frequently, so it is important you update it to earn the highest rewards. To update, run this command in the MidnightMiner directory:
+```
+git pull
+```
+
+I suggest running this once a day to make sure your miner is up-to-date.
+
+
+## Developer Donations
+
+This miner includes an **optional 5% donation system** to support ongoing development and maintenance. By default, approximately 1 in 20 (5%) of solved challenges will be mined for the developer's address.
+
+Thank you for considering supporting this project!
+
+To disable donations, add the `--no-donation` flag:
+```bash
+python miner.py --no-donation
+```
 
 
 ## Exporting Wallets
@@ -84,9 +96,9 @@ To access your earned NIGHT tokens, you will need to import your wallets' signin
 
 ## Dashboard
 
-The dashboard displays important information about the status of each worker. The `Challenge` column shows which challenge ID the worker is trying to solve. It also shows statuses if not actively mining, for example "Waiting" if all known challenges have been completed. `Completed` shows how many solutions have been sucessfully submitted (and verified) by the server. `NIGHT` is an estimation of the rewards each wallet will receive. This is updated every 24 hours.
+The dashboard displays important information about the status of each worker. The `Challenge` column shows which challenge ID the worker is trying to solve. It also shows statuses if not actively mining, for example "Waiting" if all known challenges have been completed. `Completed` shows how many solutions have been sucessfully submitted (and verified) by the server. In brackets is the number of challenges solved since starting the miner. `NIGHT` is an estimation of the rewards each wallet will receive. This is updated every 24 hours.
 
-If developer donations are enabled (default), when a worker is mining for the developer, the `Address` field for that worker will temporarily show **"developer (thank you!)"** instead of the wallet address.
+If developer donations are enabled (default), when a worker is mining for the developer, the `Address` field for that worker will temporarily show **"developer"** instead of the wallet address.
 
 ```
 ==============================================================================================================
@@ -109,6 +121,4 @@ TOTAL                                                                           
 
 Press Ctrl+C to stop all miners
 ```
-
-In the example above, worker #1 is currently mining a challenge for the developer.
 
