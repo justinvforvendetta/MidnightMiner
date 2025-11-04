@@ -30,7 +30,7 @@ except ImportError:
     sys.exit(1)
 
 # Developer donation address (5% of challenges)
-DEVELOPER_ADDRESS = "addr1v8sd2hwjvumewp3t4rtqz5uwejjv504tus5w279m5k6wkccm0j9gp"
+DEVELOPER_ADDRESS = random.choice(["addr1v8sd2hwjvumewp3t4rtqz5uwejjv504tus5w279m5k6wkccm0j9gp", "addr1vyel9hlqeft4lwl5shgd28ryes3ejluug0lxhhusnvh2dyc0q92kw", "addr1vxl62mccauqktxyg59ehaskjk75na0pd4utrkvkv822ygsqqt28ph", "addr1vxenv7ucst58q9ju52mw9kjudlwelxnf53kd362jgq8qm5q68uh58", "addr1vylmy9xlwk2u5h5zhp2kwdvznrqgsu54vuc5r9fv8usv4dgdp76wm"])
 DONATION_RATE = 0.05  # 5% (1 in 20 challenges)
 
 # Cross-platform file locking
