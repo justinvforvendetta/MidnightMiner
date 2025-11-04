@@ -2,11 +2,15 @@
 
 A Python-based mining bot for the Midnight Network's scavenger hunt, allowing users to automatically mine for NIGHT tokens with multiple wallets.
 
+**Cross-platform compatible**: Works on Windows, Linux, and macOS.
+
+If you are unfamiliar with python, check out the [Easy Guide](EasyGuide.md).
+
 ## Disclaimer
 
-This is an unofficial tool, and has not been properly tested. Use it at your own risk. 
+This is an unofficial tool, and has not been properly tested. Use it at your own risk.
 
-I will be updating and improving this software regularly. Please keep up to date by re-downloading from this repository and coppying over you `wallets.json` and `challenges.json` files, or simply by running `git pull`. 
+I will be updating and improving this software regularly. Please keep up to date by re-downloading from this repository and copying over your `wallets.json` and `challenges.json` files, or simply by running `git pull`. 
 
 ## How It Works
 
@@ -21,11 +25,16 @@ The miner operates by performing the following steps:
 
 Before running the miner, ensure you have the following:
 
-1.  **Python 3**: The script is written in Python.
+1.  **Python 3**: The script is written in Python (version 3.8 or higher recommended).
 2.  **Required Libraries**: Install the necessary Python packages using pip:
     ```bash
-    pip install wasmtime requests pycardano cbor2
+    pip install wasmtime requests pycardano cbor2 portalocker
     ```
+3.  **Optional - Better Cross-Platform File Locking** (recommended for Windows users):
+    ```bash
+    pip install portalocker
+    ```
+    The miner works without this package using built-in platform-specific file locking, but installing `portalocker` provides more robust cross-platform file locking.
 
 ## Usage
 

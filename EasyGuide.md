@@ -35,7 +35,7 @@ Python is the programming language this software runs on.
 
 3. Install the required components by typing:
    ```
-   pip install wasmtime requests pycardano cbor2
+   pip install wasmtime requests pycardano cbor2 portalocker
    ```
    Press Enter and wait for installation to finish
 

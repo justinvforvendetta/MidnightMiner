@@ -3,8 +3,9 @@ Midnight Scavenger Mine Bot - Multi-Wallet Production Version
 Supports multiple concurrent wallets mining simultaneously
 
 Prerequisites:
-1. pip install wasmtime requests pycardano
-2. Download ashmaize_web_bg.wasm from Midnight website
+1. pip install wasmtime requests pycardano cbor2
+2. (Optional) pip install portalocker  # For better cross-platform file locking
+3. Download ashmaize_web_bg.wasm from Midnight website
 
 Usage:
     python midnight_miner.py                    # Single wallet (legacy mode)
@@ -20,7 +21,6 @@ import json
 import os
 import sys
 import threading
-import fcntl
 import logging
 from multiprocessing import Process, Queue, Manager
 from urllib.parse import quote
@@ -28,6 +28,42 @@ from wasmtime import Store, Module, Instance, Func, FuncType, ValType
 from pycardano import PaymentSigningKey, PaymentVerificationKey, Address, Network
 import cbor2
 import random
+
+# Cross-platform file locking
+try:
+    import portalocker
+    HAS_PORTALOCKER = True
+except ImportError:
+    HAS_PORTALOCKER = False
+    # Fallback to platform-specific locking
+    if os.name == 'nt':  # Windows
+        import msvcrt
+    else:  # Unix/Linux/Mac
+        import fcntl
+
+
+# Cross-platform file locking functions
+def lock_file(file_handle):
+    """Acquire exclusive lock on file (cross-platform)"""
+    if HAS_PORTALOCKER:
+        portalocker.lock(file_handle, portalocker.LOCK_EX)
+    elif os.name == 'nt':  # Windows
+        # Lock first byte of file
+        msvcrt.locking(file_handle.fileno(), msvcrt.LK_LOCK, 1)
+    else:  # Unix/Linux/Mac
+        fcntl.flock(file_handle.fileno(), fcntl.LOCK_EX)
+
+
+def unlock_file(file_handle):
+    """Release lock on file (cross-platform)"""
+    if HAS_PORTALOCKER:
+        portalocker.unlock(file_handle)
+    elif os.name == 'nt':  # Windows
+        # Unlock first byte of file
+        file_handle.seek(0)
+        msvcrt.locking(file_handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:  # Unix/Linux/Mac
+        fcntl.flock(file_handle.fileno(), fcntl.LOCK_UN)
 
 
 # Configure logging
@@ -81,8 +117,8 @@ class ChallengeTracker:
             The result from modify_func
         """
         with open(self.challenges_file, 'r+') as f:
-            # Get exclusive lock - blocks until available
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            # Get exclusive lock - blocks until available (cross-platform)
+            lock_file(f)
             try:
                 # Read current state
                 f.seek(0)
@@ -101,7 +137,7 @@ class ChallengeTracker:
 
                 return result
             finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                unlock_file(f)
 
     def register_challenge(self, challenge):
         """Register a new challenge with all data needed to solve it"""
