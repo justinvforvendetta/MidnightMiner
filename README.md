@@ -58,6 +58,14 @@ You can run the miner from your terminal.
     Each worker uses one CPU core and 1GB of RAM. The miner will automatically create enough wallets for all workers and rotate through them as challenges are completed. Each worker always mines to a unique wallet. Do not run more workers than your system is capable of.
 
 
+## Resubmitting Failed Solutions
+
+If solutions fail to submit due to network issues or API errors, they are automatically saved to `solutions.csv`. To resubmit them:
+```bash
+python resubmit_solutions.py
+```
+The script automatically removes successfully submitted solutions and keeps any that still failed for retry.
+
 ## ⚠️ Update Regularly
 
 This software will be updated frequently, so it is VERY important you update it to earn the highest rewards. To update, run this command in the MidnightMiner directory:

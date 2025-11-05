@@ -90,6 +90,14 @@ At the bottom, you'll see totals across all your wallets:
 
 Press `Ctrl+C` to stop the miner anytime.
 
+## Resubmitting Failed Solutions
+
+If solutions fail to submit (network issues, API errors), they're saved to `solutions.csv`. To retry them:
+```
+python resubmit_solutions.py
+```
+Successfully submitted solutions are automatically removed from the file.
+
 ## Claiming NIGHT
 
 You will need to claim your NIGHT tokens with the wallets created by the software. To access them:
