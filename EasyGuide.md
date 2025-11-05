@@ -4,7 +4,7 @@ This guide will help you start mining NIGHT tokens on Windows with MidnightMiner
 
 ## What This Software Does
 
-Midnight Miner automatically solves puzzles to earn NIGHT tokens. It runs on your computer and can use multiple wallets at the same time to earn more rewards.
+Midnight Miner automatically solves puzzles to earn NIGHT tokens. It runs on your computer using multiple workers that rotate through different wallets to earn more rewards. Each worker uses its own unique wallet, and new wallets are created automatically as needed.
 
 ## Step 1: Install Python
 
@@ -33,12 +33,12 @@ Git allows for the miner to be easily downloaded and updated from the terminal.
 2. Type `git clone https://github.com/djeanql/MidnightMiner`
 3. Then enter the folder with `cd MidnightMiner`
 
-## Step 4: Install Dependancies
+## Step 4: Install Dependencies
 
 
-Install the required dependancies by typing:
+Install the required dependencies by typing:
    ```
-   pip install wasmtime requests pycardano cbor2 portalocker
+   pip install requests pycardano cbor2 portalocker
    ```
 Press Enter and wait for installation to finish
 
@@ -46,19 +46,19 @@ If you get a command not found error, you can use `python -m pip` instead of `pi
 
 ## Step 5: Start Mining
 
-**For a single wallet** (good for testing):
+**For a single worker** (good for testing):
 ```
 python miner.py
 ```
 
-**For multiple wallets** (recommended for better earnings):
+**For multiple workers** (recommended for better earnings):
 ```
 python miner.py --workers 4
 ```
 
-Replace `4` with the number of wallets you want to use. Each wallet uses one CPU core and about 1GB of memory.
+Replace `4` with the number of workers you want to use. Each worker uses roughly one CPU core and about 1GB of memory. The miner will automatically create enough wallets for all workers and rotate through them as puzzles are completed.
 
-> **Tip**: If you have a 6-core processor, try `--workers 6`. Don't use more workers than you have CPU cores.
+> **Tip**: If you have a 6-core processor, try `--workers 6`.
 
 ## ⚠️ Update Regularly
 
@@ -71,24 +71,28 @@ This will fetch any changes made in this repository
 
 ## Back Up Your Wallet File
 
-It is import that you back up `wallets.json`, which is in the same folder as ther miner. Copy it to a safe location. If you increase the number of worrkers with the --workers option, new wallets will be added so you should back it up again.
+It is important that you back up `wallets.json`, which is in the same folder as the miner. Copy it to a safe location. The miner automatically creates new wallets as needed, so you should back up this file regularly to ensure you don't lose access to any earned tokens.
 
 ## The Dashboard
 
-Once running, you'll see a dashboard that updates automatically:
+Once running, you'll see a dashboard that updates automatically. Each row shows one worker (workers rotate through different wallets automatically):
 
-- **Address**: Your wallet addresses (where tokens are sent)
-- **Challenge**: The puzzle being solved
+- **ID**: Worker number
+- **Address**: The wallet address currently being used by this worker
+- **Challenge**: The puzzle being solved (or status like "Building ROM" or "Waiting")
 - **Attempts**: How many guesses have been tried
-- **H/s**: Guesses per second
-- **Completed**: Number of puzzles solved, number since launching the miner is in brackets
-- **NIGHT**: Estimated token rewards
+- **H/s**: Guesses per second (hash rate)
+
+At the bottom, you'll see totals across all your wallets:
+- **Total Hash Rate**: Combined speed of all workers
+- **Total Completed**: Total puzzles solved (number in brackets shows puzzles solved this session)
+- **Total NIGHT**: Estimated token rewards across all wallets (fetched once at startup)
 
 Press `Ctrl+C` to stop the miner anytime.
 
-## Accessing Your Tokens
+## Claiming NIGHT
 
-Your earned tokens are stored in wallets created by the software. To access them:
+You will need to claim your NIGHT tokens with the wallets created by the software. To access them:
 
 1. Export your wallet keys by running:
    ```

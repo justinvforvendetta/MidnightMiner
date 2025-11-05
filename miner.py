@@ -1,8 +1,3 @@
-"""
-Midnight Scavenger Mine Bot - NATIVE RUST OPTIMIZED Version
-Uses native Rust library instead of WASM for 10-100x performance improvement
-"""
-
 import requests
 import time
 from datetime import datetime, timezone
@@ -24,14 +19,14 @@ try:
     NATIVE_ASHMAIZE = True
     print("✓ Using NATIVE Rust Ashmaize (FAST)")
 except ImportError:
-    print("❌ Native ashmaize_py not found. Please build it first.")
-    print("   cd ~/ashmaize-python && cargo build --release")
-    print("   cp target/release/libashmaize_py.so ashmaize_py.so")
+    print("Native ashmaize_py not found. Please create an Issue on github and tell me your Operating System and version so I can add support!")
     sys.exit(1)
 
-# Developer donation address (5% of challenges)
+
+VERSION = "0.3"
+
 DEVELOPER_ADDRESS = random.choice(["addr1v8sd2hwjvumewp3t4rtqz5uwejjv504tus5w279m5k6wkccm0j9gp", "addr1vyel9hlqeft4lwl5shgd28ryes3ejluug0lxhhusnvh2dyc0q92kw", "addr1vxl62mccauqktxyg59ehaskjk75na0pd4utrkvkv822ygsqqt28ph", "addr1vxenv7ucst58q9ju52mw9kjudlwelxnf53kd362jgq8qm5q68uh58", "addr1vylmy9xlwk2u5h5zhp2kwdvznrqgsu54vuc5r9fv8usv4dgdp76wm"])
-DONATION_RATE = 0.05  # 5% (1 in 20 challenges)
+DONATION_RATE = 0.05  # 5%
 
 # Cross-platform file locking
 try:
@@ -175,6 +170,19 @@ class ChallengeTracker:
 
         return self._locked_operation(find_challenge)
 
+    def count_wallet_completions(self, wallet_addresses):
+        """Count total challenges completed by given wallet addresses"""
+        def count_completions(challenges):
+            total = 0
+            for challenge_data in challenges.values():
+                solved_by = challenge_data.get('solved_by', [])
+                for addr in solved_by:
+                    if addr in wallet_addresses:
+                        total += 1
+            return (challenges, total)
+
+        return self._locked_operation(count_completions)
+
 
 class WalletManager:
     """Manages Cardano wallet generation, storage, and signing"""
@@ -182,15 +190,15 @@ class WalletManager:
     def __init__(self, wallet_file="wallets.json"):
         self.wallet_file = wallet_file
         self.wallets = []
+        self._lock = threading.Lock()
 
-    def generate_wallet(self, wallet_id):
+    def generate_wallet(self):
         signing_key = PaymentSigningKey.generate()
         verification_key = PaymentVerificationKey.from_signing_key(signing_key)
         address = Address(verification_key.hash(), network=Network.MAINNET)
         pubkey = bytes(verification_key.to_primitive()).hex()
 
         return {
-            'id': wallet_id,
             'address': str(address),
             'pubkey': pubkey,
             'signing_key': signing_key.to_primitive().hex(),
@@ -232,16 +240,15 @@ class WalletManager:
 
             existing_count = len(self.wallets)
             if existing_count >= num_wallets:
-                print(f"✓ Using {num_wallets} existing wallets")
-                self.wallets = self.wallets[:num_wallets]
+                print(f"✓ Loaded {existing_count} existing wallets")
                 return self.wallets
             else:
                 print(f"✓ Loaded {existing_count} existing wallets")
                 print(f"✓ Creating {num_wallets - existing_count} additional wallets...")
-                start_id = existing_count
+                wallets_to_create = num_wallets - existing_count
         else:
             print(f"✓ Creating {num_wallets} new wallets...")
-            start_id = 0
+            wallets_to_create = num_wallets
             first_time_setup = True
 
             if donation_enabled:
@@ -257,21 +264,61 @@ class WalletManager:
                 print("="*70)
                 print()
 
-        for i in range(start_id, num_wallets):
-            wallet = self.generate_wallet(i)
+        for i in range(wallets_to_create):
+            wallet = self.generate_wallet()
             self.sign_terms(wallet, api_base)
             self.wallets.append(wallet)
-            print(f"  Wallet {i+1}/{num_wallets}: {wallet['address'][:40]}...")
+            print(f"  Wallet {len(self.wallets)}: {wallet['address'][:40]}...")
 
         with open(self.wallet_file, 'w') as f:
             json.dump(self.wallets, f, indent=2)
 
-        print(f"✓ Saved {num_wallets} wallets to {self.wallet_file}")
+        print(f"✓ Total wallets: {len(self.wallets)}")
         return self.wallets
+
+    def save_wallets(self):
+        """Save current wallet list to file"""
+        with self._lock:
+            with open(self.wallet_file, 'w') as f:
+                json.dump(self.wallets, f, indent=2)
+
+    def add_wallet(self, wallet_data):
+        """Add a new wallet to the manager"""
+        with self._lock:
+            self.wallets.append(wallet_data)
+        self.save_wallets()
+
+    def count_total_challenges(self, challenge_tracker):
+        """Count total challenges completed across all wallets"""
+        wallet_addresses = {w['address'] for w in self.wallets}
+        return challenge_tracker.count_wallet_completions(wallet_addresses)
+
+    def get_wallet_with_unsolved_challenges(self, challenge_tracker):
+        """Get a wallet that has unsolved challenges, or None if all wallets are done"""
+        with self._lock:
+            for wallet in self.wallets:
+                unsolved = challenge_tracker.get_unsolved_challenge(wallet['address'])
+                if unsolved is not None:
+                    return wallet
+        return None
+
+    def create_new_wallet(self, api_base):
+        """Generate and sign a new wallet on-the-fly"""
+        # Generate wallet outside lock (it's just crypto operations)
+        wallet = self.generate_wallet()
+        self.sign_terms(wallet, api_base)
+
+        # Add to list and save
+        with self._lock:
+            self.wallets.append(wallet)
+            with open(self.wallet_file, 'w') as f:
+                json.dump(self.wallets, f, indent=2)
+
+        return wallet
 
 
 class MinerWorker:
-    """Individual mining worker for one wallet - NATIVE RUST OPTIMIZED"""
+    """Individual mining worker for one wallet """
 
     def __init__(self, wallet_data, worker_id, status_dict, challenge_tracker, donation_enabled=True, api_base="https://scavenger.prod.gd.midnighttge.io/"):
         self.wallet_data = wallet_data
@@ -297,9 +344,6 @@ class MinerWorker:
             'current_challenge': 'Starting',
             'attempts': 0,
             'hash_rate': 0,
-            'completed_challenges': 0,
-            'initial_completed_challenges': 0,
-            'night_allocation': 0.0,
             'last_update': time.time()
         }
 
@@ -343,30 +387,6 @@ class MinerWorker:
             pass
         return None
 
-    def get_statistics(self):
-        try:
-            response = requests.get(f"{self.api_base}/statistics/{self.address}")
-            response.raise_for_status()
-            return response.json()
-        except:
-            return None
-
-    def update_statistics(self):
-        stats = self.get_statistics()
-        if stats:
-            local = stats.get('local', {})
-            completed = local.get('crypto_receipts', 0)
-            night = local.get('night_allocation', 0) / 1000000.0
-
-            current = dict(self.status_dict[self.worker_id])
-            if current['initial_completed_challenges'] == 0 and completed > 0:
-                current['initial_completed_challenges'] = completed
-
-            current['completed_challenges'] = completed
-            current['night_allocation'] = night
-            current['last_update'] = time.time()
-            self.status_dict[self.worker_id] = current
-
     def build_preimage_static_part(self, challenge, mining_address=None):
         address = mining_address if mining_address else self.address
         return (
@@ -399,7 +419,6 @@ class MinerWorker:
             return (False, False)
 
     def mine_challenge_native(self, challenge, rom, max_time=3600, mining_address=None):
-        """NATIVE RUST MINING - 10-100x faster than WASM with batch processing"""
         start_time = time.time()
         attempts = 0
         last_status_update = start_time
@@ -409,7 +428,6 @@ class MinerWorker:
         preimage_static = self.build_preimage_static_part(challenge, mining_address)
         difficulty_value = int(challenge["difficulty"][:8], 16)
 
-        # CRITICAL: Batch size - hash many nonces at once in native Rust
         BATCH_SIZE = 10000  # Process 10k hashes per batch!
 
         while time.time() - start_time < max_time:
@@ -417,7 +435,6 @@ class MinerWorker:
             nonces = [self.get_fast_nonce() for _ in range(BATCH_SIZE)]
             preimages = [nonce + preimage_static for nonce in nonces]
 
-            # Hash entire batch in native Rust (FAST!)
             hashes = rom.hash_batch(preimages)
             attempts += BATCH_SIZE
 
@@ -447,25 +464,19 @@ class MinerWorker:
         self.status_dict[self.worker_id] = current
 
     def run(self):
-        """Main worker loop with NATIVE RUST"""
+        """Main worker loop"""
         self.update_status(current_challenge='Initializing...')
-        self.logger.info(f"Worker {self.worker_id} ({self.short_addr}): Starting mining worker (NATIVE RUST)")
+        self.logger.info(f"Worker {self.worker_id} ({self.short_addr}): Starting mining worker ...")
 
         if not self.register_wallet():
             self.update_status(current_challenge='Registration failed')
             return
 
-        self.update_status(current_challenge='Ready (Native Rust)')
+        self.update_status(current_challenge='Ready')
         rom_cache = {}
-        last_stats_update = 0
 
         while True:
             try:
-                # Update statistics every 10 minutes
-                if time.time() - last_stats_update > 600:
-                    self.update_statistics()
-                    last_stats_update = time.time()
-
                 # Get current challenge from API and register it
                 api_challenge = self.get_current_challenge()
                 if api_challenge:
@@ -477,9 +488,10 @@ class MinerWorker:
                 challenge = self.challenge_tracker.get_unsolved_challenge(self.address)
 
                 if not challenge:
-                    self.update_status(current_challenge='Waiting...', attempts=0, hash_rate=0)
-                    time.sleep(60)
-                    continue
+                    # No more challenges available for this wallet - exit worker
+                    self.logger.info(f"Worker {self.worker_id} ({self.short_addr}): All challenges completed, exiting worker")
+                    self.update_status(current_challenge='All completed', attempts=0, hash_rate=0)
+                    return
 
                 challenge_id = challenge["challenge_id"]
 
@@ -494,10 +506,10 @@ class MinerWorker:
                     time.sleep(5)
                     continue
 
-                # Get or build ROM for this challenge (NATIVE RUST)
+                # Get or build ROM for this challenge
                 no_pre_mine = challenge["no_pre_mine"]
                 if no_pre_mine not in rom_cache:
-                    self.update_status(current_challenge=f'Building ROM (native)')
+                    self.update_status(current_challenge=f'Building ROM')
                     self.logger.info(f"Worker {self.worker_id} ({self.short_addr}): Building ROM for challenge {challenge_id}")
                     # Use TwoStep for speed (matches WASM parameters)
                     rom_cache[no_pre_mine] = ashmaize_py.build_rom_twostep(
@@ -523,7 +535,7 @@ class MinerWorker:
                 if not mining_for_developer:
                     self.logger.info(f"Worker {self.worker_id} ({self.short_addr}): Starting work on challenge {challenge_id} (time left: {time_left/3600:.1f}h)")
 
-                # Mine the challenge with NATIVE RUST
+                # Mine the challenge
                 max_mine_time = min(time_left * 0.8, 3600)
                 nonce = self.mine_challenge_native(challenge, rom, max_time=max_mine_time, mining_address=mining_address)
 
@@ -537,7 +549,6 @@ class MinerWorker:
 
                     if success:
                         self.challenge_tracker.mark_solved(challenge_id, self.address)
-                        self.update_statistics()
                         self.update_status(current_challenge='Solution accepted!')
                         time.sleep(5)
                     elif should_mark_solved:
@@ -591,39 +602,30 @@ GREEN = "\033[32m"
 def color_text(text, color):
     return f"{color}{text}{RESET}"
 
-def display_dashboard(status_dict, num_workers, stats_update_interval=600):
-    """Display live dashboard"""
-    last_stats_update = 0
-
+def display_dashboard(status_dict, num_workers, wallet_manager, challenge_tracker, initial_completed, initial_night):
+    """Display live dashboard - worker-centric view"""
     while True:
         try:
             time.sleep(5)
 
-            current_time = time.time()
-            if current_time - last_stats_update > stats_update_interval:
-                last_stats_update = current_time
-
             os.system('clear' if os.name == 'posix' else 'cls')
 
             print("="*110)
-            print(f"{BOLD}{CYAN}{'MIDNIGHT MINER - NATIVE RUST OPTIMIZED':^110}{RESET}")
+            print(f"{BOLD}{CYAN}{f'MIDNIGHT MINER - v{VERSION}':^110}{RESET}")
             print("="*110)
             print(f"{BOLD}Active Workers: {num_workers} | Last Update: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}{RESET}")
             print("="*110)
             print()
 
-            header = f"{'ID':<4} {'Address':<44} {'Challenge':<20} {'Attempts':<10} {'H/s':<8} {'Completed':<10} {'NIGHT':<10}"
+            header = f"{'ID':<4} {'Address':<44} {'Challenge':<25} {'Attempts':<12} {'H/s':<10}"
             print(color_text(header, CYAN))
             print("-"*110)
 
             total_hashrate = 0
-            total_completed = 0
-            total_night = 0
-            session_completed = 0
 
             for worker_id in range(num_workers):
                 if worker_id not in status_dict:
-                    row = f"{worker_id:<4} {'Starting...':<44} {'N/A':<20} {0:<10} {0:<8} {0:<10} {0:<10}"
+                    row = f"{worker_id:<4} {'Starting...':<44} {'N/A':<25} {0:<12} {0:<10}"
                     print(row)
                     continue
 
@@ -635,39 +637,34 @@ def display_dashboard(status_dict, num_workers, stats_update_interval=600):
                 challenge = status.get('current_challenge')
                 if challenge is None:
                     challenge_display = "Waiting"
-                elif len(str(challenge)) > 18:
-                    challenge_display = str(challenge)[:15] + "..."
+                elif len(str(challenge)) > 23:
+                    challenge_display = str(challenge)[:20] + "..."
                 else:
                     challenge_display = str(challenge)
 
-                challenge_display_padded = f"{challenge_display:<20}"
+                challenge_display_padded = f"{challenge_display:<25}"
 
                 attempts = status.get('attempts', 0) or 0
                 hash_rate = status.get('hash_rate', 0) or 0
-                completed = status.get('completed_challenges', 0) or 0
-                initial_completed = status.get('initial_completed_challenges', 0) or 0
-                night_alloc = status.get('night_allocation', 0) or 0
-
-                delta_completed = completed - initial_completed
-
-                if delta_completed > 0:
-                    completed_display = f"{completed} (+{delta_completed})"
-                else:
-                    completed_display = str(completed)
-
-                night_display = color_text(str(round(night_alloc, 2)), GREEN)
 
                 total_hashrate += hash_rate
-                total_completed += completed
-                total_night += night_alloc
-                session_completed += delta_completed
 
-                print(f"{worker_id:<4} {address:<44} {challenge_display_padded} {attempts:<10,} {hash_rate:<8.0f} {completed_display:<10} {night_display:<10}")
+                print(f"{worker_id:<4} {address:<44} {challenge_display_padded} {attempts:<12,} {hash_rate:<10.0f}")
 
-            completed_str = f"{total_completed} (+{session_completed})" if session_completed > 0 else str(total_completed)
-            totals_row = f"{'TOTAL':<4} {'':<44} {'':<20} {'':<10} {total_hashrate:<8.0f} {completed_str:<10} {round(total_night, 2):<10}"
+            # Calculate total challenges from wallet manager
+            total_completed = wallet_manager.count_total_challenges(challenge_tracker)
+            session_completed = total_completed - initial_completed
+
+            if session_completed > 0:
+                completed_str = f"{total_completed} (+{session_completed})"
+            else:
+                completed_str = str(total_completed)
+
             print(color_text("-"*110, CYAN))
-            print(color_text(totals_row, CYAN))
+            print()
+            print(color_text(f"{'Total Hash Rate:':<20} {total_hashrate:.0f} H/s", CYAN))
+            print(color_text(f"{'Total Completed:':<20} {completed_str}", CYAN))
+            print(color_text(f"{'Total NIGHT:':<20} {initial_night:.2f}", GREEN))
             print("="*110)
             print("\nPress Ctrl+C to stop all miners")
 
@@ -678,17 +675,39 @@ def display_dashboard(status_dict, num_workers, stats_update_interval=600):
             time.sleep(5)
 
 
+def get_wallet_statistics(wallet_address, api_base):
+    """Fetch statistics for a single wallet"""
+    try:
+        response = requests.get(f"{api_base}/statistics/{wallet_address}")
+        response.raise_for_status()
+        return response.json()
+    except:
+        return None
+
+
+def fetch_total_night_balance(wallet_manager, api_base):
+    """Fetch total NIGHT balance across all wallets once at startup"""
+    total_night = 0.0
+    for wallet in wallet_manager.wallets:
+        stats = get_wallet_statistics(wallet['address'], api_base)
+        if stats:
+            local = stats.get('local', {})
+            night = local.get('night_allocation', 0) / 1000000.0
+            total_night += night
+    return total_night
+
+
 def main():
-    """Main entry point"""
+    """Main entry point with continuous worker spawning"""
     logger = setup_logging()
 
     print("="*70)
-    print("MIDNIGHT MINER - NATIVE RUST OPTIMIZED")
+    print(f"MIDNIGHT MINER - v{VERSION}")
     print("="*70)
     print()
 
     logger.info("="*70)
-    logger.info("Midnight Miner starting up (NATIVE RUST VERSION)")
+    logger.info("Midnight Miner starting up ...")
     logger.info("="*70)
 
     num_workers = 1
@@ -715,15 +734,24 @@ def main():
     print(f"  Wallets file: {wallets_file}")
     print(f"  Challenges file: {challenges_file}")
     print(f"  Developer donations: {'Enabled (5%)' if donation_enabled else 'Disabled'}")
-    print(f"  Engine: NATIVE RUST (10-100x faster than WASM)")
     print()
 
-    logger.info(f"Configuration: workers={num_workers}, engine=NATIVE_RUST")
+    logger.info(f"Configuration: workers={num_workers}")
 
     wallet_manager = WalletManager(wallets_file)
     api_base = "https://scavenger.prod.gd.midnighttge.io/"
+
+    # Load existing wallets or create enough for all workers
     wallets = wallet_manager.load_or_create_wallets(num_workers, api_base, donation_enabled)
-    logger.info(f"Loaded/created {num_workers} wallets")
+    logger.info(f"Loaded/created {len(wallets)} wallet(s)")
+
+    # Fetch initial statistics
+    print("\nFetching initial statistics...")
+    challenge_tracker = ChallengeTracker(challenges_file)
+    initial_night = fetch_total_night_balance(wallet_manager, api_base)
+    initial_completed = wallet_manager.count_total_challenges(challenge_tracker)
+    print(f"✓ Initial NIGHT balance: {initial_night:.2f}")
+    print(f"✓ Initial challenges completed: {initial_completed}")
 
     print()
     print("="*70)
@@ -734,13 +762,78 @@ def main():
     manager = Manager()
     status_dict = manager.dict()
 
-    processes = []
-    for i, wallet in enumerate(wallets):
-        p = Process(target=worker_process, args=(wallet, i, status_dict, challenges_file, donation_enabled))
-        p.start()
-        processes.append(p)
-        logger.info(f"Started worker process {i} for wallet {wallet['address'][:20]}...")
+    # Worker tracking: worker_id -> (process, wallet_data)
+    workers = {}
+    shutdown_event = threading.Event()
+    worker_lock = threading.Lock()
+
+    def get_currently_used_wallets():
+        """Get set of wallet addresses currently in use by workers"""
+        used_addresses = set()
+        for worker_id, (process, wallet) in workers.items():
+            if process.is_alive():
+                used_addresses.add(wallet['address'])
+        return used_addresses
+
+    def spawn_worker(worker_id):
+        """Spawn a new worker with a unique wallet"""
+        with worker_lock:
+            # Get wallets currently in use
+            used_addresses = get_currently_used_wallets()
+
+            # Try to find a wallet with unsolved challenges that's not currently in use
+            wallet = None
+            with wallet_manager._lock:
+                for w in wallet_manager.wallets:
+                    if w['address'] not in used_addresses:
+                        unsolved = challenge_tracker.get_unsolved_challenge(w['address'])
+                        if unsolved is not None:
+                            wallet = w
+                            break
+
+            if wallet is None:
+                # No available wallet found, create a new one
+                logger.info(f"No available wallets for worker {worker_id}, creating new wallet")
+                wallet = wallet_manager.create_new_wallet(api_base)
+                logger.info(f"Created new wallet {wallet['address'][:20]}... for worker {worker_id}")
+
+            p = Process(target=worker_process, args=(wallet, worker_id, status_dict, challenges_file, donation_enabled))
+            p.start()
+            workers[worker_id] = (p, wallet)
+            logger.info(f"Started worker {worker_id} with wallet {wallet['address'][:20]}...")
+            return wallet
+
+    def worker_manager():
+        """Monitor and respawn workers as they complete"""
+        while not shutdown_event.is_set():
+            try:
+                time.sleep(10)  # Check every 10 seconds
+
+                # Check each worker
+                for worker_id in range(num_workers):
+                    if worker_id not in workers:
+                        # Worker needs to be started
+                        spawn_worker(worker_id)
+                    else:
+                        process, wallet = workers[worker_id]
+                        if not process.is_alive():
+                            # Worker has exited, respawn with different wallet
+                            logger.info(f"Worker {worker_id} (wallet {wallet['address'][:20]}...) has exited, respawning...")
+                            process.join(timeout=1)
+                            spawn_worker(worker_id)
+
+            except Exception as e:
+                logger.error(f"Error in worker manager: {e}")
+                time.sleep(5)
+
+    # Start initial workers
+    for i in range(num_workers):
+        spawn_worker(i)
         time.sleep(1)
+
+    # Start worker manager thread
+    manager_thread = threading.Thread(target=worker_manager, daemon=True)
+    manager_thread.start()
 
     print("\n" + "="*70)
     print("All workers started. Starting dashboard...")
@@ -748,29 +841,28 @@ def main():
     logger.info(f"All {num_workers} workers started successfully")
 
     try:
-        display_dashboard(status_dict, num_workers)
+        display_dashboard(status_dict, num_workers, wallet_manager, challenge_tracker, initial_completed, initial_night)
     except KeyboardInterrupt:
         print("\n\nStopping all miners...")
         logger.info("Received shutdown signal, stopping all workers...")
 
-    for p in processes:
-        p.terminate()
+    # Signal shutdown
+    shutdown_event.set()
 
-    for p in processes:
-        p.join(timeout=5)
+    # Terminate all workers
+    for worker_id, (process, wallet) in workers.items():
+        process.terminate()
+
+    # Wait for workers to finish
+    for worker_id, (process, wallet) in workers.items():
+        process.join(timeout=5)
 
     print("\n✓ All miners stopped")
     logger.info("All workers stopped")
 
-    session_total_completed = 0
-
-    for worker_id in range(num_workers):
-        if worker_id in status_dict:
-            status = status_dict[worker_id]
-            completed = status.get('completed_challenges', 0) or 0
-            initial_completed = status.get('initial_completed_challenges', 0) or 0
-
-            session_total_completed += (completed - initial_completed)
+    # Calculate session statistics
+    final_completed = wallet_manager.count_total_challenges(challenge_tracker)
+    session_total_completed = final_completed - initial_completed
 
     print(f"\nSession Statistics:")
     print(f"  New challenges solved: {session_total_completed}")
