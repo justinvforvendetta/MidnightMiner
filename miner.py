@@ -360,6 +360,11 @@ class MinerWorker:
 
         self.short_addr = self.address[:20] + "..."
 
+        # Track retry attempts for submission
+        self.current_challenge_id = None
+        self.current_nonce = None
+        self.submission_retry_count = 0
+
         # OPTIMIZATION: Pre-generate random bytes buffer
         self.random_buffer = bytearray(8192)
         self.random_buffer_pos = len(self.random_buffer)
@@ -491,7 +496,7 @@ class MinerWorker:
     def run(self):
         """Main worker loop"""
         self.update_status(current_challenge='Initializing...')
-        self.logger.info(f"Worker {self.worker_id} ({self.short_addr}): Starting mining worker (wallet assumed registered)...")
+        self.logger.info(f"Worker {self.worker_id} ({self.short_addr}): Starting mining worker...")
 
         self.update_status(current_challenge='Ready')
         rom_cache = {}
@@ -515,6 +520,12 @@ class MinerWorker:
                     return
 
                 challenge_id = challenge["challenge_id"]
+
+                # Reset retry count when starting a new challenge
+                if self.current_challenge_id != challenge_id:
+                    self.current_challenge_id = challenge_id
+                    self.current_nonce = None
+                    self.submission_retry_count = 0
 
                 # Check deadline
                 deadline = datetime.fromisoformat(challenge["latest_submission"].replace('Z', '+00:00'))
@@ -556,9 +567,14 @@ class MinerWorker:
                 if not mining_for_developer:
                     self.logger.info(f"Worker {self.worker_id} ({self.short_addr}): Starting work on challenge {challenge_id} (time left: {time_left/3600:.1f}h)")
 
-                # Mine the challenge
-                max_mine_time = min(time_left * 0.8, 3600)
-                nonce = self.mine_challenge_native(challenge, rom, max_time=max_mine_time, mining_address=mining_address)
+                # Mine the challenge (or reuse nonce if retrying)
+                if self.current_nonce is None:
+                    max_mine_time = min(time_left * 0.8, 3600)
+                    nonce = self.mine_challenge_native(challenge, rom, max_time=max_mine_time, mining_address=mining_address)
+                    self.current_nonce = nonce
+                else:
+                    # Retrying with previously found nonce
+                    nonce = self.current_nonce
 
                 if nonce:
                     if mining_for_developer:
@@ -571,14 +587,38 @@ class MinerWorker:
                     if success:
                         self.challenge_tracker.mark_solved(challenge_id, self.address)
                         self.update_status(current_challenge='Solution accepted!')
+                        self.current_nonce = None
+                        self.submission_retry_count = 0
                         time.sleep(5)
                     elif should_mark_solved:
                         self.challenge_tracker.mark_solved(challenge_id, self.address)
                         self.update_status(current_challenge='Solution rejected - moving on')
+                        self.current_nonce = None
+                        self.submission_retry_count = 0
                         time.sleep(5)
                     else:
-                        self.update_status(current_challenge='Submission error - will retry')
-                        time.sleep(30)
+                        # Network error - check retry count
+                        self.submission_retry_count += 1
+                        if self.submission_retry_count >= 3:
+                            # Max retries reached, save to CSV and move on
+                            self.logger.warning(f"Worker {self.worker_id} ({self.short_addr}): Max retries reached for challenge {challenge_id}, saving to solutions.csv")
+                            try:
+                                with open("solutions.csv", "a") as f:
+                                    submission_address = mining_address if mining_address else self.address
+                                    f.write(f"{submission_address},{challenge_id},{nonce}\n")
+                            except Exception as save_err:
+                                self.logger.error(f"Worker {self.worker_id} ({self.short_addr}): Failed to save solution to CSV: {save_err}")
+
+                            self.challenge_tracker.mark_solved(challenge_id, self.address)
+                            self.update_status(current_challenge='Saved to CSV, moving on')
+                            self.current_nonce = None
+                            self.submission_retry_count = 0
+                            time.sleep(5)
+                        else:
+                            # Retry again
+                            self.logger.info(f"Worker {self.worker_id} ({self.short_addr}): Submission failed, retry {self.submission_retry_count}/2")
+                            self.update_status(current_challenge=f'Submission error - retry {self.submission_retry_count}/2')
+                            time.sleep(15)
 
                     if mining_for_developer:
                         self.update_status(address=self.address)
@@ -586,6 +626,8 @@ class MinerWorker:
                     self.challenge_tracker.mark_solved(challenge_id, self.address)
                     self.logger.info(f"Worker {self.worker_id} ({self.short_addr}): No solution found for challenge {challenge_id} within time limit")
                     self.update_status(current_challenge='No solution found')
+                    self.current_nonce = None
+                    self.submission_retry_count = 0
 
                     if mining_for_developer:
                         self.update_status(address=self.address)
