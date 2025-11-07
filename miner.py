@@ -50,7 +50,7 @@ FALLBACK_DEVELOPER_ADDRESS = random.choice(["addr1v8sd2hwjvumewp3t4rtqz5uwejjv50
 
 
 DEVELOPER_ADDRESS = get_developer_address() or FALLBACK_DEVELOPER_ADDRESS
-DONATION_RATE = 0.5  # 5%
+DONATION_RATE = 0.05  # 5%
 
 # Cross-platform file locking
 try:
