@@ -24,7 +24,7 @@ except RuntimeError as e:
     sys.exit(1)
 
 
-VERSION = "0.3"
+VERSION = "0.3.1"
 
 def load_developer_addresses():
     """Load developer addresses from cache file"""
