@@ -497,7 +497,6 @@ class WalletManager:
         except Exception as e:
             logging.error(f"Failed to register dynamically created wallet: {e}")
             print("\nFATAL ERROR: Cannot register new wallet with API")
-            print(f"Error: {e}")
             print("Mining cannot continue without wallet registration.\n")
             print("Please check your network connection and try again.")
             raise
