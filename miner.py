@@ -610,6 +610,22 @@ class MinerWorker:
             error_detail = e.response.text
             already_exists = "Solution already exists" in error_detail
 
+            # Check for wallet not registered error - this is fatal
+            # API returns: "Solution validation failed: Address is not registered"
+            if "address is not registered" in error_detail.lower():
+                self.logger.error(f"Worker {self.worker_id} ({self.short_addr}): FATAL - Wallet not registered with API")
+                self.logger.error(f"Wallet address: {address}")
+                self.logger.error(f"Error response: {error_detail}")
+                print("\n" + "="*70)
+                print("FATAL ERROR: WALLET NOT REGISTERED")
+                print("="*70)
+                print(f"Wallet address: {address}")
+                print("\nThis wallet was not properly registered with the API.")
+                print("Mining with unregistered wallets will not earn any rewards.")
+                print("\nPlease check your wallet registration and restart the miner.")
+                print("="*70 + "\n")
+                sys.exit(1)
+
             self.logger.warning(f"Worker {self.worker_id} ({self.short_addr}): Solution REJECTED for challenge {challenge['challenge_id']} - {e.response.status_code}: {error_detail}")
 
             # Check if this is NOT the "Solution already exists" error
