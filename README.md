@@ -152,6 +152,8 @@ python miner.py --no-donation
 
 ## Consolidating NIGHT Earnings
 
+> ⚠️ **WARNING**: An issue has been discovered in the Midnight statistics API resulting in your NIGHT allocation chaning after consolidating rewards. Please DO NOT run this script until the issue has been solved, or you risk loosing your rewards. Check this readme in a few days, if this warning has been removed it is safe to run.
+
 You can consolidate all NIGHT earnings to a single wallet using `consolidate.py`. This allows you to save on transaction fees by receiving all NIGHT tokens to a single address (when they are distributed).
 
 The destination address **must be registered** at https://sm.midnight.gd before consolidation.

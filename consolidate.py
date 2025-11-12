@@ -277,12 +277,10 @@ def main():
 
     # Confirm operation
     print("="*70)
-    print("WARNING: This will donate ALL earnings from ALL wallets to the")
-    print("         destination address.")
-    print()
     print("NOTE: The destination address MUST be registered at:")
     print("      https://sm.midnight.gd")
     print("="*70)
+    print("!!WARNING!!: An issue has been discovered in the Midnight statistics API resulting in your NIGHT allocation chaning after consolidating rewards. Please DO NOT run this script until the issue has been solved, or you risk loosing your allocation.")
     print()
     confirm = input("Type 'CONFIRM' to proceed: ").strip()
     if confirm != 'CONFIRM':
