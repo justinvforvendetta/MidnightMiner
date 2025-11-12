@@ -92,6 +92,17 @@ def donate_wallet(destination_address, wallet_data, api_base):
             except:
                 pass
 
+        # Check for already donated to this address (409 Conflict)
+        if e.response.status_code == 409:
+            try:
+                error_json = e.response.json()
+                error_msg = error_json.get("message", "")
+                if "already has an active donation assignment" in error_msg:
+                    print(f"  ✓ Already donated to this address")
+                    return True
+            except:
+                pass
+
         error_detail = e.response.text if hasattr(e.response, 'text') else str(e)
         print(f"  ✗ HTTP Error {e.response.status_code}: {error_detail}")
         return False
