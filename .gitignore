@@ -1,5 +1,7 @@
 *.log
 __pycache__/
+proxy.json
+devaddress.json
 solutions.csv
 wallets.json
 balances.json
