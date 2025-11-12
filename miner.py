@@ -110,6 +110,7 @@ def unlock_file(file_handle):
         fcntl.flock(file_handle.fileno(), fcntl.LOCK_UN)
 
 
+
 def load_latest_balance_snapshot(balances_file="balances.json"):
     """Load the most recent balance snapshot from balances.json. Returns (balance, timestamp) or (None, None) if not found."""
     try:
@@ -184,6 +185,20 @@ def save_balance_snapshot(balance, balances_file="balances.json"):
     except Exception as e:
         logging.warning(f"Failed to save balance snapshot: {e}")
         return False
+
+def backup_wallets_file(wallet_file):
+    """Backup wallets.json to wallets.json.bak before making changes"""
+    if os.path.exists(wallet_file):
+        backup_file = wallet_file + ".bak"
+        try:
+            import shutil
+            shutil.copy2(wallet_file, backup_file)
+            return True
+        except Exception as e:
+            logging.warning(f"Failed to create backup of {wallet_file}: {e}")
+            return False
+    return False
+
 
 
 def append_solution_to_csv(address, challenge_id, nonce):
@@ -294,27 +309,71 @@ class ChallengeTracker:
         return self._locked_operation(modify)
 
     def get_unsolved_challenge(self, wallet_address):
+        """
+        Select the best challenge for this wallet:
+
+        - Must not be already solved by this wallet.
+        - Must have > 120s remaining until latest_submission.
+        - Prefer the EASIEST challenge first:
+            * Easiest = highest numeric difficulty mask.
+        - Tie-breaker: earlier deadline first.
+        """
         def find_challenge(challenges):
             now = datetime.now(timezone.utc)
-            candidates = []
 
-            for challenge_id, data in challenges.items():
-                if wallet_address not in data['solved_by']:
-                    deadline = datetime.fromisoformat(data['latest_submission'].replace('Z', '+00:00'))
-                    time_left = (deadline - now).total_seconds()
-                    if time_left > 120:  # Require at least 2 minutes remaining
-                        candidates.append({
-                            'challenge': data,
-                            'time_left': time_left
-                        })
+            best = None
+            best_diff = None
+            best_deadline = None
 
-            if not candidates:
-                result = None
-            else:
-                candidates.sort(key=lambda x: x['time_left'], reverse=True)
-                result = candidates[0]['challenge']
+            for data in challenges.values():
+                # Skip if this wallet already solved it
+                solved_by = data.get('solved_by', [])
+                if wallet_address in solved_by:
+                    continue
 
-            return (challenges, result)
+                # Parse and validate deadline
+                latest = data.get('latest_submission')
+                if not latest:
+                    continue
+                try:
+                    deadline = datetime.fromisoformat(
+                        latest.replace('Z', '+00:00')
+                    )
+                except Exception:
+                    # Malformed timestamp: ignore this challenge
+                    continue
+
+                time_left = (deadline - now).total_seconds()
+                if time_left <= 120:
+                    # Too close to expiry or expired; skip
+                    continue
+
+                # Parse difficulty; must match mining logic prefix
+                diff_hex = data.get('difficulty')
+                if not diff_hex:
+                    continue
+                try:
+                    difficulty_val = int(diff_hex[:8], 16)
+                except Exception:
+                    # Invalid difficulty: skip
+                    continue
+
+                if best is None:
+                    best = data
+                    best_diff = difficulty_val
+                    best_deadline = deadline
+                else:
+                    # Prefer EASIER (numerically HIGHER) difficulty mask
+                    if difficulty_val > best_diff:
+                        best = data
+                        best_diff = difficulty_val
+                        best_deadline = deadline
+                    # If difficulty equal, prefer the one expiring sooner
+                    elif difficulty_val == best_diff and deadline < best_deadline:
+                        best = data
+                        best_deadline = deadline
+
+            return challenges, dict(best) if best is not None else None
 
         return self._locked_operation(find_challenge)
 
@@ -403,7 +462,8 @@ class WalletManager:
         wallet_data['signature'] = cbor2.dumps(cose_sign1).hex()
 
     def _register_wallet_with_api(self, wallet_data, api_base):
-        """Register a wallet with the API. Returns True if successful or already registered."""
+        """Register a wallet with the API. Returns True if successful or already registered.
+        Raises an exception if registration fails."""
         url = f"{api_base}/register/{wallet_data['address']}/{wallet_data['signature']}/{wallet_data['pubkey']}"
         try:
             response = requests.post(url, json={})
@@ -414,9 +474,14 @@ class WalletManager:
                 error_msg = e.response.json().get('message', '')
                 if 'already' in error_msg.lower():
                     return True
-            return False
-        except Exception:
-            return False
+            # Registration failed - raise exception with details
+            raise Exception(f"Wallet registration failed: HTTP {e.response.status_code} - {e.response.text}")
+        except requests.exceptions.RequestException as e:
+            # Network error
+            raise Exception(f"Wallet registration failed: Network error - {str(e)}")
+        except Exception as e:
+            # Other error
+            raise Exception(f"Wallet registration failed: {str(e)}")
 
     def load_or_create_wallets(self, num_wallets, api_base, donation_enabled=True):
         first_time_setup = False
@@ -454,18 +519,33 @@ class WalletManager:
         for i in range(wallets_to_create):
             wallet = self.generate_wallet()
             self.sign_terms(wallet, api_base)
-            self.wallets.append(wallet)
             print(f"  Wallet {len(self.wallets)}: {wallet['address'][:40]}...")
 
-            # Register the wallet immediately
+            # Register the wallet immediately - this is critical
             print(f"    Registering wallet with API...")
-            if self._register_wallet_with_api(wallet, api_base):
+            try:
+                self._register_wallet_with_api(wallet, api_base)
                 print(f"    ✓ Registered successfully")
-            else:
-                print(f"    ✓ Already registered or registration complete")
+                # Only add wallet to list after successful registration
+                self.wallets.append(wallet)
+            except Exception as e:
+                print(f"\n{'='*70}")
+                print(f"FATAL ERROR: Failed to register wallet with API")
+                print(f"{'='*70}")
+                print(f"Wallet address: {wallet['address']}")
+                print(f"Error: {e}")
+                print(f"\nThe API may be unreachable or there may be a configuration issue.")
+                print(f"Mining with unregistered wallets will not earn any rewards.")
+                print(f"\nwallets.json has NOT been saved to prevent wasted mining.")
+                print(f"Please check your network connection and try again.")
+                print(f"{'='*70}\n")
+                logging.error(f"Wallet registration failed: {e}")
+                sys.exit(1)
 
+        # Only save wallets if all registrations succeeded
         with open(self.wallet_file, 'w') as f:
             json.dump(self.wallets, f, indent=2)
+        backup_wallets_file(self.wallet_file)
 
         print(f"✓ Total wallets: {len(self.wallets)}")
         return self.wallets
@@ -475,6 +555,7 @@ class WalletManager:
         with self._lock:
             with open(self.wallet_file, 'w') as f:
                 json.dump(self.wallets, f, indent=2)
+            backup_wallets_file(self.wallet_file)
 
     def add_wallet(self, wallet_data):
         """Add a new wallet to the manager"""
@@ -497,19 +578,28 @@ class WalletManager:
         return None
 
     def create_new_wallet(self, api_base):
-        """Generate and sign a new wallet on-the-fly"""
+        """Generate and sign a new wallet on-the-fly.
+        Raises exception if registration fails."""
         # Generate wallet outside lock (it's just crypto operations)
         wallet = self.generate_wallet()
         self.sign_terms(wallet, api_base)
 
-        # Register the wallet immediately
-        self._register_wallet_with_api(wallet, api_base)
+        # Register the wallet immediately - raises exception on failure
+        try:
+            self._register_wallet_with_api(wallet, api_base)
+        except Exception as e:
+            logging.error(f"Failed to register dynamically created wallet: {e}")
+            print("\nFATAL ERROR: Cannot register new wallet with API")
+            print("Mining cannot continue without wallet registration.\n")
+            print("Please check your network connection and try again.")
+            raise
 
-        # Add to list and save
+        # Add to list and save only after successful registration
         with self._lock:
             self.wallets.append(wallet)
             with open(self.wallet_file, 'w') as f:
                 json.dump(self.wallets, f, indent=2)
+            backup_wallets_file(self.wallet_file)
 
         return wallet
 
@@ -613,6 +703,22 @@ class MinerWorker:
         except requests.exceptions.HTTPError as e:
             error_detail = e.response.text
             already_exists = "Solution already exists" in error_detail
+
+            # Check for wallet not registered error - this is fatal
+            # API returns: "Solution validation failed: Address is not registered"
+            if "address is not registered" in error_detail.lower():
+                self.logger.error(f"Worker {self.worker_id} ({self.short_addr}): FATAL - Wallet not registered with API")
+                self.logger.error(f"Wallet address: {address}")
+                self.logger.error(f"Error response: {error_detail}")
+                print("\n" + "="*70)
+                print("FATAL ERROR: WALLET NOT REGISTERED")
+                print("="*70)
+                print(f"Wallet address: {address}")
+                print("\nThis wallet was not properly registered with the API.")
+                print("Mining with unregistered wallets will not earn any rewards.")
+                print("\nPlease check your wallet registration and restart the miner.")
+                print("="*70 + "\n")
+                sys.exit(1)
 
             self.logger.warning(f"Worker {self.worker_id} ({self.short_addr}): Solution REJECTED for challenge {challenge['challenge_id']} - {e.response.status_code}: {error_detail}")
 
@@ -725,7 +831,6 @@ class MinerWorker:
                 time_left = (deadline - datetime.now(timezone.utc)).total_seconds()
 
                 if time_left <= 0:
-                    self.challenge_tracker.mark_solved(challenge_id, self.address)
                     self.logger.info(f"Worker {self.worker_id} ({self.short_addr}): Challenge {challenge_id} expired")
                     self.update_status(current_challenge='Expired')
                     time.sleep(5)
@@ -1051,6 +1156,7 @@ def main():
     wallets_file = "wallets.json"
     challenges_file = "challenges.json"
     donation_enabled = True
+    wallets_count = None
 
     for i, arg in enumerate(sys.argv):
         if arg == '--workers' and i + 1 < len(sys.argv):
@@ -1061,19 +1167,29 @@ def main():
             challenges_file = sys.argv[i + 1]
         elif arg == '--no-donation':
             donation_enabled = False
+        elif arg == '--wallets' and i + 1 < len(sys.argv):
+            wallets_count = int(sys.argv[i + 1])
 
     if num_workers < 1:
         print("Error: --workers must be at least 1")
         return 1
 
+    # If --wallets not specified, default to num_workers
+    if wallets_count is None:
+        wallets_count = num_workers
+    elif wallets_count < 1:
+        print("Error: --wallets must be at least 1")
+        return 1
+
     print(f"Configuration:")
     print(f"  Workers: {num_workers}")
+    print(f"  Wallets to ensure: {wallets_count}")
     print(f"  Wallets file: {wallets_file}")
     print(f"  Challenges file: {challenges_file}")
     print(f"  Developer donations: {'Enabled (5%)' if donation_enabled else 'Disabled'}")
     print()
 
-    logger.info(f"Configuration: workers={num_workers}")
+    logger.info(f"Configuration: workers={num_workers}, wallets_to_ensure={wallets_count}")
 
     # Load or fetch developer addresses
     dev_addresses = load_developer_addresses()
@@ -1103,8 +1219,8 @@ def main():
     wallet_manager = WalletManager(wallets_file)
     api_base = "https://scavenger.prod.gd.midnighttge.io/"
 
-    # Load existing wallets or create enough for all workers
-    wallets = wallet_manager.load_or_create_wallets(num_workers, api_base, donation_enabled)
+    # Load existing wallets or create enough for specified wallet count
+    wallets = wallet_manager.load_or_create_wallets(wallets_count, api_base, donation_enabled)
     logger.info(f"Loaded/created {len(wallets)} wallet(s)")
 
     # Fetch initial statistics
