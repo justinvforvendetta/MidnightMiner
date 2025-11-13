@@ -70,7 +70,6 @@ git clone https://github.com/djeanql/MidnightMiner && cd MidnightMiner
      ```bash
      .\venv\Scripts\Activate.ps1
      ```
-	 *
 
 3. **Install required dependencies**:
    ```bash
