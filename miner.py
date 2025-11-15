@@ -23,8 +23,7 @@ def display_consolidation_warning():
     print("="*70)
     print("This miner uses multiple wallets to mine efficiently.")
     print("To avoid transaction fees you need to consolidate your NIGHT")
-    print("into a single wallet.")
-    print("You can use the 'consolidate.py' script to assist with this.")
+    print("into a single wallet (if you have not already done so).")
     print("Check the README for instructions.")
     print()
 
