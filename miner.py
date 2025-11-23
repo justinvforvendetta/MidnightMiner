@@ -5,10 +5,10 @@ import logging
 from datetime import datetime, timezone
 from multiprocessing import Process, Manager
 
-# Check for --paralel flag early, before importing modules that load the native library
-if '--paralel' in sys.argv:
+# Check for --parallel flag early, before importing modules that load the native library
+if '--parallel' in sys.argv:
     from miner import ashmaize_loader
-    ashmaize_loader.USE_PARALEL = True
+    ashmaize_loader.USE_PARALLEL = True
 
 from miner.config import VERSION, API_BASE, FALLBACK_DEVELOPER_WALLETS, parse_arguments
 from miner.logging_config import setup_logging
